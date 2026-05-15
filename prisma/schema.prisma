@@ -1,0 +1,63 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Bill {
+  id          String       @id @default(cuid())
+  title       String
+  date        DateTime
+  createdAt   DateTime     @default(now())
+  people      Person[]
+  items       Item[]
+  adjustments Adjustment[]
+}
+
+model Person {
+  id     String      @id @default(cuid())
+  name   String
+  bill   Bill        @relation(fields: [billId], references: [id], onDelete: Cascade)
+  billId String
+  shares ItemShare[]
+}
+
+model Item {
+  id     String      @id @default(cuid())
+  name   String
+  price  Float
+  bill   Bill        @relation(fields: [billId], references: [id], onDelete: Cascade)
+  billId String
+  shares ItemShare[]
+}
+
+/// A single person's dollar share of a single item.
+/// `amount` is the resolved dollar amount they owe for that item
+/// (already accounting for even split, percentages, or custom amounts).
+model ItemShare {
+  id       String @id @default(cuid())
+  item     Item   @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  itemId   String
+  person   Person @relation(fields: [personId], references: [id], onDelete: Cascade)
+  personId String
+  amount   Float
+
+  @@unique([itemId, personId])
+}
+
+/// Tax, fee, or discount applied on top of the items.
+/// `type`       -> "tax" | "fee" | "discount"
+/// `splitMode`  -> "proportional" (by each person's item total) or "even"
+/// For discounts, `amount` is stored as a positive number; it's subtracted during display.
+model Adjustment {
+  id        String @id @default(cuid())
+  name      String
+  amount    Float
+  type      String
+  splitMode String
+  bill      Bill   @relation(fields: [billId], references: [id], onDelete: Cascade)
+  billId    String
+}
