@@ -71,7 +71,10 @@ export function SpendingPieChart({
                 border: "1px solid #27272a",
                 borderRadius: 8,
                 fontSize: 12,
+                color: "#fafafa",
               }}
+              itemStyle={{ color: "#fafafa" }}
+              labelStyle={{ color: "#fafafa" }}
               formatter={(v: number) => fmt(v)}
             />
             <Legend

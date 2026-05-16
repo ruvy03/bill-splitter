@@ -17,7 +17,8 @@
       "Bash(curl -s -o /dev/null -w \"3000: %{http_code}\\\\n\" http://localhost:3000/)",
       "Bash(curl -s -o /dev/null -w \"3001: %{http_code}\\\\n\" http://localhost:3001/)",
       "Bash(gh auth *)",
-      "PowerShell(gh auth status)"
+      "PowerShell(gh auth status)",
+      "Bash(node test-temp.mjs)"
     ]
   }
 }
