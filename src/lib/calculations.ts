@@ -44,16 +44,23 @@ function seededShuffle<T>(arr: T[], seedKey: string): T[] {
 
 /**
  * Round per-person dollar shares to whole cents so they sum *exactly* to
- * `targetPrice`. Floor each share to cents, then distribute any leftover
- * cents one-by-one to a random subset of eligible recipients (people whose
- * raw share was > 0). Random pick is seeded by `seedKey` for stability.
+ * `targetTotal`. Floor each share to cents (Math.floor — toward −∞), then
+ * distribute any leftover cents one-by-one to a random subset of eligible
+ * recipients (people whose raw share was non-zero). Random pick is seeded
+ * by `seedKey` for stability.
+ *
+ * Works for both positive totals (items, tax, fees) and negative totals
+ * (discounts). Because Math.floor always rounds toward −∞, the leftover
+ * (target − sum) is always ≥ 0, so we always *add* cents to recipients —
+ * which for a negative total means bringing them closer to zero (e.g.
+ * −34¢ → −33¢), distributing the rounding gain to one lucky person.
  */
 export function reconcileSharesToCents(
   raw: Record<string, number>,
-  targetPrice: number,
+  targetTotal: number,
   seedKey: string,
 ): Record<string, number> {
-  const targetCents = Math.round(targetPrice * 100);
+  const targetCents = Math.round(targetTotal * 100);
   const ids = Object.keys(raw);
   const flooredCents: Record<string, number> = {};
   let sum = 0;
@@ -63,8 +70,9 @@ export function reconcileSharesToCents(
     sum += c;
   }
   let leftover = targetCents - sum;
-  // Eligible recipients: people who actually have a share in this item.
-  const eligible = ids.filter((id) => (raw[id] || 0) > 0);
+  // Eligible recipients: anyone with a non-zero raw share. Excluded people
+  // (raw === 0) shouldn't suddenly appear in the breakdown via overflow.
+  const eligible = ids.filter((id) => (raw[id] || 0) !== 0);
   if (eligible.length > 0 && leftover > 0) {
     const order = seededShuffle(eligible, seedKey);
     for (let i = 0; leftover > 0; i++) {
@@ -175,21 +183,22 @@ export function distributeAdjustment(
   if (adj.splitMode === "even") {
     const each = signed / people.length;
     for (const p of people) out[p.id] = each;
-    return out;
-  }
-
-  // proportional: by each person's item subtotal
-  if (itemSubtotal === 0) {
+  } else if (itemSubtotal === 0) {
     // no items yet — fall back to even
     const each = signed / people.length;
     for (const p of people) out[p.id] = each;
-    return out;
+  } else {
+    // proportional: by each person's item subtotal
+    for (const p of people) {
+      const share = (itemTotals[p.id] || 0) / itemSubtotal;
+      out[p.id] = signed * share;
+    }
   }
-  for (const p of people) {
-    const share = (itemTotals[p.id] || 0) / itemSubtotal;
-    out[p.id] = signed * share;
-  }
-  return out;
+
+  // Snap to whole cents so the per-person amounts sum *exactly* to the
+  // signed adjustment total — leftover cents are stably-randomly handed
+  // to one (or more) of the eligible recipients.
+  return reconcileSharesToCents(out, signed, adj.id);
 }
 
 /**
