@@ -15,6 +15,8 @@ import {
   Tag,
   Loader2,
   PlusCircle,
+  ClipboardPaste,
+  X,
 } from "lucide-react";
 import {
   computeTotals,
@@ -22,6 +24,7 @@ import {
   perPersonSubtotal,
   resolveItemShares,
 } from "@/lib/calculations";
+import { parseInstacartReceipt } from "@/lib/parseReceipt";
 import type {
   DraftAdjustment,
   DraftBill,
@@ -395,11 +398,29 @@ function StepItems({
       items: b.items.map((it) => (it.id === id ? { ...it, ...patch } : it)),
     }));
 
+  const addParsedItems = (parsed: { name: string; price: number }[]) =>
+    setBill((b) => {
+      const additions: DraftItem[] = parsed.map((p) => ({
+        id: uid(),
+        name: p.name,
+        price: p.price,
+        splitMode: "even",
+        shares: b.people.map((person) => ({
+          personId: person.id,
+          value: 0,
+          included: true,
+        })),
+      }));
+      return { ...b, items: [...b.items, ...additions] };
+    });
+
   return (
     <div className="space-y-3">
+      <ReceiptPaster onAdd={addParsedItems} />
+
       {bill.items.length === 0 && (
         <div className="text-sm text-[color:var(--color-muted)] text-center py-8 border border-dashed border-[color:var(--color-border)] rounded-xl">
-          No items yet. Add your first item below.
+          No items yet. Add your first item below, or paste a receipt above.
         </div>
       )}
 
@@ -423,6 +444,132 @@ function StepItems({
           {bill.items.length === 0 ? "Start here" : `${bill.items.length} so far`}
         </span>
       </button>
+    </div>
+  );
+}
+
+function ReceiptPaster({
+  onAdd,
+}: {
+  onAdd: (items: { name: string; price: number }[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState("");
+
+  const preview = useMemo(
+    () => (text.trim() ? parseInstacartReceipt(text) : []),
+    [text],
+  );
+  const previewSubtotal = preview.reduce((a, i) => a + i.price, 0);
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="w-full flex items-center justify-center gap-2 text-sm text-[color:var(--color-foreground-dim)] hover:text-white border border-dashed border-[color:var(--color-border)] hover:border-[color:var(--color-accent)]/50 rounded-xl py-2.5 transition-colors"
+      >
+        <ClipboardPaste size={14} />
+        Paste from Instacart receipt
+      </button>
+    );
+  }
+
+  const handleAdd = () => {
+    if (preview.length === 0) return;
+    onAdd(preview);
+    setText("");
+    setOpen(false);
+  };
+
+  return (
+    <div className="rounded-xl border border-[color:var(--color-accent)]/40 bg-[#0f0f11] p-3.5 space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <ClipboardPaste
+            size={14}
+            className="text-[color:var(--color-accent)]"
+          />
+          <span className="text-sm font-medium">Paste Instacart receipt</span>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            setOpen(false);
+            setText("");
+          }}
+          className="btn btn-ghost !py-1 !px-2 text-xs"
+          aria-label="Close"
+        >
+          <X size={13} />
+        </button>
+      </div>
+
+      <textarea
+        autoFocus
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        placeholder="Paste the Instacart order email here — item names and prices will be extracted automatically."
+        rows={8}
+        className="input font-mono text-xs !py-2 resize-y"
+      />
+
+      {text.trim().length > 0 && (
+        <div className="text-xs">
+          {preview.length === 0 ? (
+            <p className="text-amber-400/90">
+              Couldn&apos;t find any items. Make sure you copied the full
+              receipt block including the &quot;Final item price&quot; lines.
+            </p>
+          ) : (
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between text-[color:var(--color-foreground-dim)]">
+                <span>
+                  Found <span className="text-white font-medium">{preview.length}</span> item{preview.length === 1 ? "" : "s"}
+                </span>
+                <span className="tabular-nums">
+                  Subtotal <span className="text-white font-medium">{fmt(previewSubtotal)}</span>
+                </span>
+              </div>
+              <ul className="space-y-1 max-h-40 overflow-auto pr-1">
+                {preview.map((p, i) => (
+                  <li
+                    key={i}
+                    className="flex items-center justify-between gap-3 text-[color:var(--color-foreground-dim)]"
+                  >
+                    <span className="truncate">{p.name}</span>
+                    <span className="tabular-nums shrink-0">
+                      {fmt(p.price)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="flex items-center justify-end gap-2">
+        <button
+          type="button"
+          onClick={() => {
+            setOpen(false);
+            setText("");
+          }}
+          className="btn btn-ghost !py-1.5 !px-3 text-sm"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={handleAdd}
+          disabled={preview.length === 0}
+          className="btn btn-primary !py-1.5 !px-3 text-sm"
+        >
+          <Plus size={14} /> Add {preview.length || ""} item
+          {preview.length === 1 ? "" : "s"}
+        </button>
+      </div>
     </div>
   );
 }
